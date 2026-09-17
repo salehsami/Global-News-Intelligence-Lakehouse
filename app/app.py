@@ -257,8 +257,7 @@ with rag_tab:
                 doc_id,
                 CountryCode,
                 url,
-                chunk_text,
-                score
+                chunk_text
             FROM vector_search(
                 index => 'workspace.gold.news_chunks_index',
                 query_text => ?,
