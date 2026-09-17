@@ -334,7 +334,7 @@ RETRIEVED CONTEXT:
                 answer_df = run_query(
                     """
                     SELECT ai_query(
-                        'system.ai.claude-sonnet-4-5',
+                        'system.ai.meta-llama-3-3-70b-instruct',
                         ?
                     ) AS answer
                     """,
