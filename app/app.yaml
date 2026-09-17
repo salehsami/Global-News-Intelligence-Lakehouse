@@ -1,7 +1,8 @@
 command: ["streamlit", "run", "app.py"]
 
 env:
-  - name: DATABRICKS_HTTP_PATH
-    value: "/sql/1.0/warehouses/22bc8efaf3a5dc1a"
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: sql-warehouse
+
   - name: STREAMLIT_GATHER_USAGE_STATS
     value: "false"

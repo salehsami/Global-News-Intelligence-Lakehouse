@@ -28,37 +28,23 @@ st.caption(
 # ============================================================
 
 def get_connection():
-    """
-    Databricks Apps user authorization forwards the current user's
-    OAuth token to the app.
-    """
-
-    user_token = st.context.headers.get(
-        "x-forwarded-access-token"
-    )
-
-    if not user_token:
-        raise RuntimeError(
-            "No Databricks user access token was provided."
-        )
-
     cfg = Config()
 
-    host = urlparse(cfg.host).netloc
-
-    http_path = os.environ.get(
-        "DATABRICKS_HTTP_PATH"
+    warehouse_id = os.environ.get(
+        "DATABRICKS_WAREHOUSE_ID"
     )
 
-    if not http_path:
+    if not warehouse_id:
         raise RuntimeError(
-            "DATABRICKS_HTTP_PATH is not configured."
+            "DATABRICKS_WAREHOUSE_ID is not configured."
         )
 
+    http_path = f"/sql/1.0/warehouses/{warehouse_id}"
+
     return sql.connect(
-        server_hostname=host,
+        server_hostname=urlparse(cfg.host).netloc,
         http_path=http_path,
-        access_token=user_token,
+        credentials_provider=lambda: cfg.authenticate,
     )
 
 
