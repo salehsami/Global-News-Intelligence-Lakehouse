@@ -1,42 +1,67 @@
 # 🌍 Global News Intelligence Lakehouse
 
-End-to-end Databricks lakehouse for global news-event analytics, anomaly detection, and retrieval-augmented intelligence using GDELT data.
+End-to-end Databricks lakehouse for GDELT news analytics, anomaly detection, MLflow model serving, AI Search RAG, and Lakeflow orchestration.
 
 ## Overview
 
-This project ingests GDELT global event data into a governed Bronze/Silver/Gold lakehouse, engineers country-level temporal features, detects unusual event-volume behavior with an Isolation Forest model, and exposes results through a Databricks App.
+This project ingests GDELT global event data into a governed Bronze/Silver/Gold lakehouse, engineers country-level temporal features, detects unusual event-volume behavior with an unsupervised Isolation Forest model, and exposes the results through a Databricks App.
 
-A separate RAG path indexes extracted news-document chunks with Databricks AI Search and uses retrieved context with Meta Llama 3.3 70B Instruct to answer questions about indexed news content.
+A separate RAG path processes news documents into chunks, indexes them with Databricks AI Search, retrieves relevant context for a user query, and generates grounded answers with Meta Llama 3.3 70B Instruct.
 
 ## Architecture
 
 ```mermaid
-flowchart TD
-    A[GDELT Event Data] --> B[Bronze]
-    B --> C[Silver validation + deduplication]
-    C --> D[Gold refined analytics]
-    D --> E[Country-day ML features]
-    E --> F[Isolation Forest]
-    F --> G[MLflow Tracking]
-    G --> H[Unity Catalog Model Registry]
-    H --> I[Databricks Model Serving]
-    F --> J[Anomaly Results]
-    J --> K[Databricks App - Anomaly Monitor]
+flowchart LR
 
-    L[News URLs / Documents] --> M[Text extraction]
-    M --> N[Chunking]
-    N --> O[workspace.gold.news_chunks]
-    O --> P[Databricks AI Search]
-    P --> Q[Top-K retrieved chunks]
-    Q --> R[Meta Llama 3.3 70B Instruct via ai_query()]
-    R --> S[Databricks App - News Intelligence RAG]
+    subgraph DATA["Data Engineering"]
+        A["GDELT Event Data"]
+        B["Bronze<br/>Raw Events"]
+        C["Silver<br/>Validation & Deduplication"]
+        D["Gold<br/>Refined Analytics"]
+        E["Country-Day<br/>ML Features"]
 
-    T[Lakeflow Job] --> B
-    T --> C
-    T --> D
-    T --> E
-    T --> F
-    U[Declarative Automation Bundle] --> T
+        A --> B --> C --> D --> E
+    end
+
+    subgraph ML["Anomaly Detection"]
+        F["Isolation Forest"]
+        G["MLflow Tracking"]
+        H["Unity Catalog<br/>Model Registry"]
+        I["Databricks<br/>Model Serving"]
+        J["Anomaly Results"]
+
+        E --> F
+        F --> G --> H --> I
+        F --> J
+    end
+
+    subgraph RAG["News Intelligence RAG"]
+        K["News Documents"]
+        L["Text Extraction"]
+        M["Chunking"]
+        N["Databricks AI Search<br/>Hybrid Vector Index"]
+        O["Top-K Retrieval"]
+        P["Meta Llama 3.3 70B<br/>via ai_query"]
+
+        K --> L --> M --> N --> O --> P
+    end
+
+    subgraph APP["Databricks App"]
+        Q["Anomaly Monitor"]
+        R["News Intelligence RAG"]
+    end
+
+    J --> Q
+    P --> R
+
+    subgraph OPS["Orchestration & Deployment"]
+        S["Lakeflow Job"]
+        T["Declarative Automation Bundle"]
+
+        T --> S
+    end
+
+    S --> B
 ```
 
 ## Databricks Components
@@ -50,29 +75,54 @@ flowchart TD
 - Databricks Model Serving
 - Databricks AI Search
 - Databricks Apps
-- Serverless SQL / compute
+- Serverless SQL and compute
 
 ## Data Engineering
 
 ### Bronze
+
 Raw GDELT Event Database files are ingested into Delta tables while preserving source fidelity.
 
 ### Silver
-Records are validated and cleaned, including duplicate-event handling, tolerant numeric parsing, geographic validation, and date checks.
+
+Records are validated and cleaned using checks for:
+
+- duplicate events
+- tolerant numeric parsing
+- geographic values
+- date validity
 
 ### Gold
-Curated event data is aggregated into country/day analytics and ML-ready features.
+
+Curated event data is aggregated into country/day analytics and ML-ready feature tables.
 
 Verified prototype metrics:
+
 - **1,217,961 clean GDELT event records**
-- **0 duplicate GlobalEventID values after cleanup**
+- **0 duplicate `GlobalEventID` values after cleanup**
 - **2,640 country/day ML feature rows**
 
 ## Machine Learning
 
-An unsupervised `IsolationForest` detects unusual country-level event-volume behavior using engineered temporal and activity features.
+An unsupervised `IsolationForest` model detects unusual country-level event-volume behavior using engineered temporal and activity features such as:
+
+- event count
+- previous event count
+- event-count change
+- event-count ratio
+- rolling mean
+- rolling standard deviation
+- rolling z-score
+- article count
+- mention count
+- source count
+- average Goldstein scale
+- average tone
+
+The model was trained with scikit-learn and tracked with MLflow.
 
 Verified test results:
+
 - **427 test observations**
 - **24 anomalies**
 - **5.62% anomaly rate**
@@ -81,13 +131,14 @@ Registered model:
 
 `workspace.gold.gdelt_isolation_forest`
 
-The model was tracked with MLflow, registered in Unity Catalog, deployed through Databricks Model Serving, and successfully invoked through its REST endpoint.
+The model was registered in Unity Catalog, deployed through Databricks Model Serving, and successfully invoked through its REST endpoint.
 
 ## Retrieval-Augmented Generation
 
 A separate RAG path processes news documents into chunks and indexes them with Databricks AI Search.
 
 AI Search configuration:
+
 - Index: `workspace.gold.news_chunks_index`
 - Source table: `workspace.gold.news_chunks`
 - Index type: Delta Sync
@@ -96,22 +147,28 @@ AI Search configuration:
 - Indexed chunks: **765**
 
 RAG flow:
+
 1. User submits a question.
-2. Databricks AI Search retrieves relevant chunks.
+2. Databricks AI Search retrieves the most relevant chunks.
 3. Retrieved chunks are assembled into grounded context.
-4. `system.ai.meta-llama-3-3-70b-instruct` generates the answer through `ai_query()`.
+4. `system.ai.meta-llama-3-3-70b-instruct` generates the final answer through `ai_query`.
 5. The answer is displayed in the Databricks App.
 
 ## Databricks App
 
-The deployed app contains two working views:
+The deployed application contains two working views.
 
-- **🔎 Anomaly Monitor** — displays anomalous country/day news activity.
-- **💬 News Intelligence RAG** — answers questions over indexed news-document chunks.
+### 🔎 Anomaly Monitor
+
+Displays anomalous country/day news activity produced by the structured GDELT event pipeline.
+
+### 💬 News Intelligence RAG
+
+Answers questions over indexed news-document chunks using retrieval-augmented generation.
 
 ## Orchestration
 
-The core workflow is orchestrated as a Lakeflow Job:
+The core ETL and ML workflow is orchestrated as a Lakeflow Job:
 
 ```text
 bronze_ingestion
@@ -126,13 +183,16 @@ anomaly_model
 ```
 
 Verified runs:
+
 - Manual Lakeflow run: **3m 59s**
 - Bundle-managed run: **6m 57s**
-- All five tasks completed successfully on serverless compute.
+- All five tasks completed successfully on serverless compute
 
 ## Deployment as Code
 
-The repository contains a `databricks.yml` Declarative Automation Bundle defining the Lakeflow Job and task dependencies.
+The repository includes a `databricks.yml` Declarative Automation Bundle that defines the Lakeflow Job and task dependencies.
+
+Typical bundle lifecycle:
 
 ```bash
 databricks bundle validate
@@ -148,6 +208,12 @@ global-news-intelligence-lakehouse/
 │   ├── app.py
 │   ├── app.yaml
 │   └── requirements.txt
+├── docs/
+│   └── images/
+│       ├── lakeflow-job-success.png
+│       ├── anomaly-monitor.png
+│       ├── rag-assistant.png
+│       └── ai-search-index.png
 ├── notebooks/
 │   ├── 01_gdelt_bronze_ingestion.ipynb
 │   ├── 02_gdelt_silver_validation.ipynb
@@ -159,22 +225,48 @@ global-news-intelligence-lakehouse/
 └── databricks.yml
 ```
 
-## Screenshots to Include
+## Screenshots
 
-Add these under `docs/images/`:
-1. `lakeflow-job-success.png`
-2. `anomaly-monitor.png`
-3. `rag-assistant.png`
-4. You can add more to make it more credible..
+### Lakeflow Job
 
-Then embed the strongest three:
+![Lakeflow Job](docs/img/lakeflow-job-success.png)
 
-```markdown
-![Lakeflow Job](docs/images/lakeflow-job-success.png)
-![Anomaly Monitor](docs/images/anomaly-monitor.png)
-![RAG Assistant](docs/images/rag-assistant.png)
-```
+### Anomaly Monitor
+
+![Anomaly Monitor](docs/img/anomaly-monitor.png)
+
+### News Intelligence RAG
+
+![RAG Assistant](docs/img/rag-assistant.png)
+
+## Key Engineering Decisions
+
+- Kept raw ingestion separate from validation and analytics transformations.
+- Used Delta tables as persistent governed storage while Spark DataFrames handled transformations.
+- Separated ML training from MLflow experiment tracking and model lifecycle management.
+- Used a dedicated Databricks App service principal with least-privilege Unity Catalog access.
+- Kept the structured anomaly-detection path separate from the unstructured RAG path.
+- Used measured project metrics instead of estimated or fabricated scale claims.
 
 ## Tech Stack
 
 Python · PySpark · SQL · Delta Lake · Databricks · Unity Catalog · Lakeflow Jobs · MLflow · scikit-learn · Isolation Forest · Databricks Model Serving · Databricks AI Search · Vector Search · RAG · Meta Llama 3.3 70B Instruct · Streamlit · GitHub
+
+## Project Status
+
+Completed and verified:
+
+- Bronze / Silver / Gold lakehouse pipeline
+- data-quality validation and deduplication
+- country-level ML feature engineering
+- Isolation Forest anomaly detection
+- MLflow experiment tracking
+- Unity Catalog model registration
+- Databricks Model Serving
+- Databricks AI Search
+- semantic retrieval
+- RAG generation
+- deployed Databricks App
+- Lakeflow Job orchestration
+- Declarative Automation Bundle deployment
+- GitHub repository documentation
